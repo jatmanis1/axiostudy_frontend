@@ -33,29 +33,23 @@
             v-model="searchQuery" 
             placeholder="Search by title..." 
             class="search-input"
-            @input="onSearchInput"
           >
         </div>
         
         <div class="filter-group">
-          <select v-model="selectedClass" class="filter-select  text-dark">
+          <select v-model="selectedClass" class="filter-select text-dark">
             <option value="">All Classes</option>
-            <option v-for="classItem in uniqueClasses" :key="classItem">{{ classItem }}</option>
+            <option v-for="classItem in uniqueClasses" :key="classItem" :value="classItem">{{ classItem }}</option>
           </select>
           
-          <select v-model="selectedCourse" class="filter-select text-dark">
-            <option value="">All Courses</option>
-            <option v-for="course in uniqueCourses" :key="course">{{ course }}</option>
-          </select>
-          
-          <select v-model="selectedSubject" class="filter-select text-dark">>
+          <select v-model="selectedSubject" class="filter-select text-dark">
             <option value="">All Subjects</option>
-            <option v-for="subject in uniqueSubjects" :key="subject">{{ subject }}</option>
+            <option v-for="subject in uniqueSubjects" :key="subject" :value="subject">{{ subject }}</option>
           </select>
 
           <select v-model="selectedUnit" class="filter-select text-dark">
             <option value="">All Units</option>
-            <option v-for="unit in uniqueUnits" :key="unit">{{ unit }}</option>
+            <option v-for="unit in uniqueUnits" :key="unit" :value="unit">{{ unit }}</option>
           </select>
         </div>
 
@@ -78,21 +72,24 @@
       <div class="pdf-grid">
         <article 
           v-for="pdf in filteredPdfs" 
-          :key="pdf.id" 
+          :key="pdf.name" 
           class="pdf-card"
-          @click="navigateToPdf(pdf.title)"
+          @click="navigateToPdf(pdf.name)"
         >
           <div class="card-header">
-            <span class="badge course-badge">{{ pdf.course }}</span>
             <i class="fas fa-file-pdf pdf-icon"></i>
           </div>
           
-          <h3 class="pdf-title">{{ pdf.title }}</h3>
+          <h3 class="pdf-title">{{ pdf.name }}</h3>
           
           <div class="metadata-grid">
             <div class="metadata-item">
+              <span class="label">Language</span>
+              <span class="value">{{ pdf.language }}</span>
+            </div>
+            <div class="metadata-item">
               <span class="label">Class</span>
-              <span class="value">{{ pdf.class || 'N/A' }}</span>
+              <span class="value">{{ pdf.class }}</span>
             </div>
             <div class="metadata-item">
               <span class="label">Subject</span>
@@ -101,10 +98,6 @@
             <div class="metadata-item">
               <span class="label">Unit</span>
               <span class="value">{{ pdf.unit }}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="label">language</span>
-              <span class="value">{{ pdf.language || 'N/A' }}</span>
             </div>
           </div>
 
@@ -141,135 +134,116 @@ const error = ref('')
 // Filter states
 const searchQuery = ref('')
 const selectedClass = ref('')
-const selectedCourse = ref('')
 const selectedSubject = ref('')
 const selectedUnit = ref('')
 
 // API Configuration
-const API_BASE_URL = 'http://127.0.0.1:8000/api'
-const UNITS_ENDPOINT = `${API_BASE_URL}/units`
+const API_BASE_URL = 'https://api.github.com/repos/jatmanis1/axiostudy/contents/media'
+const UNITS_ENDPOINT = `${API_BASE_URL}/`
 
-// Load PDFs from Django API
+// Load PDFs
 const loadPdfs = async () => {
   isLoading.value = true
   error.value = ''
-  
   try {
-    console.log('Fetching PDFs from:', UNITS_ENDPOINT)
+    const response = await fetch(UNITS_ENDPOINT)
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
     
-    const response = await fetch(UNITS_ENDPOINT, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-
     const data = await response.json()
-    
-    // Handle both wrapped and direct array responses
-    if (Array.isArray(data)) {
-      pdfs.value = data
-    } else if (data.units && Array.isArray(data.units)) {
-      pdfs.value = data.units
-    } else {
-      throw new Error('Invalid response format: expected array or object with units property')
-    }
-
-    console.log(`Successfully loaded ${pdfs.value.length} PDFs`, pdfs.value)
-    
-  } catch (fetchError) {
-    console.error('Error fetching PDFs:', fetchError)
-    
-    if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
-      error.value = 'Unable to connect to server. Please ensure the Django server is running on port 8000.'
-    } else {
-      error.value = `Failed to load PDFs: ${fetchError.message}`
-    }
+    pdfs.value = Array.isArray(data) ? data : []
+  } catch (err) {
+    console.error(err)
+    error.value = 'Failed to load PDFs: ' + err.message
   } finally {
     isLoading.value = false
   }
 }
 
-// Navigate to PDF viewer
-const navigateToPdf = (pdfId) => {
-  if (!pdfId) {
-    console.error('Invalid PDF ID')
-    return
+// Computed: parsedPdfs with decoded values
+const parsedPdfs = computed(() => {
+  const subjectMap = {
+    c: 'Chemistry',
+    p: 'Physics',
+    m: 'Maths',
+    b: 'Biology'
   }
-  console.log('Navigating to PDF:', pdfId)
-  router.push(`/pdf/${pdfId}`)
-}
 
-// Search input handler
-const onSearchInput = (event) => {
-  searchQuery.value = event.target.value
-}
-
-// Live search and filtering
-const filteredPdfs = computed(() => {
-  if (!Array.isArray(pdfs.value)) {
-    return []
+  const languageMap = {
+    e: 'English',
+    h: 'Hindi'
   }
-  
-  return pdfs.value.filter(pdf => {
-    // Search filter - check multiple fields
-    const searchTerm = searchQuery.value.toLowerCase()
-    const matchesSearch = !searchTerm || 
-      pdf.title?.toLowerCase().includes(searchTerm) ||
-      pdf.subject?.toLowerCase().includes(searchTerm) ||
-      pdf.course?.toLowerCase().includes(searchTerm)
-    
-    // Other filters
-    const matchesClass = !selectedClass.value || pdf.class === selectedClass.value
-    const matchesCourse = !selectedCourse.value || pdf.course === selectedCourse.value
-    const matchesSubject = !selectedSubject.value || pdf.subject === selectedSubject.value
-    const matchesUnit = !selectedUnit.value || pdf.unit === selectedUnit.value
-    
-    return matchesSearch && matchesClass && matchesCourse && matchesSubject && matchesUnit
+
+  return pdfs.value.map(pdf => {
+    const name = pdf.name || ''
+    const [prefix] = name.split(/[^\w]/)
+    const langCode = prefix?.[0] || ''
+    const classCode = prefix?.[1] || ''
+    const subjectCode = prefix?.[2] || ''
+    const unitCode = prefix?.[4] || ''
+    const subunitCode = prefix?.slice(5) || ''
+
+    return {
+      ...pdf,
+      language: languageMap[langCode] || 'Unknown',
+      class: classCode === '1' ? '1st year' : 
+             classCode === '2' ? '2nd year' : 
+             classCode === '3' ? '3rd year' : 
+             classCode === '4' ? '4th year' : 'Unknown',
+      subject: subjectMap[subjectCode] || 'Unknown',
+      unit: subunit === '0'
+        ? `Unit ${unit} (Complete Unit)`
+        : subunit
+          ? `Unit ${unit} (Subunit ${subunit})`
+          : `Unit ${unit}`
+    }
   })
 })
 
-// Computed properties for filter options
-const uniqueClasses = computed(() => 
-  [...new Set(pdfs.value.map(pdf => pdf.class).filter(Boolean))].sort()
-)
+// Filtered PDFs
+const filteredPdfs = computed(() => {
+  return parsedPdfs.value.filter(pdf => {
+    const searchTerm = searchQuery.value.toLowerCase()
+    const matchesSearch = !searchTerm || 
+      pdf.name?.toLowerCase().includes(searchTerm) ||
+      pdf.subject?.toLowerCase().includes(searchTerm) ||
+      pdf.language?.toLowerCase().includes(searchTerm)
 
-const uniqueCourses = computed(() => 
-  [...new Set(pdfs.value.map(pdf => pdf.course).filter(Boolean))].sort()
-)
+    const matchesClass = !selectedClass.value || pdf.class === selectedClass.value
+    const matchesSubject = !selectedSubject.value || pdf.subject === selectedSubject.value
+    const matchesUnit = !selectedUnit.value || pdf.unit === selectedUnit.value
 
-const uniqueSubjects = computed(() => 
-  [...new Set(pdfs.value.map(pdf => pdf.subject).filter(Boolean))].sort()
-)
+    return matchesSearch && matchesClass && matchesSubject && matchesUnit
+  })
+})
 
-const uniqueUnits = computed(() => 
-  [...new Set(pdfs.value.map(pdf => pdf.unit).filter(Boolean))].sort()
-)
+// Computed options for filter dropdowns
+const uniqueClasses = computed(() => [...new Set(parsedPdfs.value.map(pdf => pdf.class).filter(Boolean))].sort())
+const uniqueSubjects = computed(() => [...new Set(parsedPdfs.value.map(pdf => pdf.subject).filter(Boolean))].sort())
+const uniqueUnits = computed(() => [...new Set(parsedPdfs.value.map(pdf => pdf.unit).filter(Boolean))].sort())
 
-// Check if any filters are active
-const hasActiveFilters = computed(() => 
-  selectedClass.value || selectedCourse.value || selectedSubject.value || selectedUnit.value
-)
+// Utility
+const hasActiveFilters = computed(() => selectedClass.value || selectedSubject.value || selectedUnit.value)
 
-// Clear all filters
 const clearFilters = () => {
   searchQuery.value = ''
   selectedClass.value = ''
-  selectedCourse.value = ''
   selectedSubject.value = ''
   selectedUnit.value = ''
 }
 
-// Initial load
-onMounted(async () => {
-  await loadPdfs()
+// Navigation
+const navigateToPdf = (pdfName) => {
+  if (!pdfName) return console.error('Invalid PDF name')
+  router.push(`/pdf/${encodeURIComponent(pdfName)}`)
+}
+
+// On mount
+onMounted(() => {
+  loadPdfs()
 })
 </script>
+ 
+
 
 <style scoped>
 /* Same styles as before */
